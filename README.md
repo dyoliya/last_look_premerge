@@ -56,7 +56,7 @@ LastLook: PreMerge addresses this gap by enforcing a controlled snapshot workflo
 
 ---
 
-## Summary Logic of the Tool
+## 🧠 Logic Flow
 ### Snapshot flow
 1. User enters:
    - Deal ID to be deleted.
