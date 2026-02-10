@@ -36,6 +36,8 @@ LastLook: PreMerge addresses this gap by enforcing a controlled snapshot workflo
 4. Store snapshots into MySQL as a durable system of record.
 5. Lock and track uploaded records to prevent accidental modification or loss.
 
+As part of this process, once the PD team identifies which deals will be deleted or retained, a pre-merge snapshot of the deal to be deleted must be captured using this tool before the actual merge is executed in Pipedrive.
+
 ---
 
 ## ✨ Features
@@ -61,12 +63,14 @@ LastLook: PreMerge addresses this gap by enforcing a controlled snapshot workflo
 1. User enters:
    - Deal ID to be deleted.
    - Deal ID to be retained.
-2. App validates input (single numeric retained ID, numeric deleted ID).
+2. App validates input:
+   - Deal IDs must be numeric
+   - Deal IDs must exist in Pipedrive
 3. App fetches both deals from Pipedrive.
-4. User confirms the two deal titles/IDs.
-5. App enriches deleted-deal data with:
-   - `Merged with Deal ID`
-   - `Snapshot Date` (America/Chicago)
+4. User confirms the two deal titles/IDs for initial validation.
+5. App enriches the record of the deal to be deleted in the Google Sheet with the following fields:
+   - `Merged with Deal ID` (Deal ID to be retained)
+   - `Snapshot Date` (current timestamp in the America/Chicago timezone)
 6. App checks Google Sheet:
    - If deal already exists and uploaded -> block update.
    - If deal exists and not uploaded -> ask to update row.
@@ -114,15 +118,17 @@ LastLook: PreMerge addresses this gap by enforcing a controlled snapshot workflo
 
     <pre>project/
     │
-    ├── app.py
-    ├── google_integration.py
-    ├── mysql_integration.py
-    ├── pipedrive_api.py
-    ├── config/
-    │ ├── .env
-    │ └── google_creds.json
-    └──token.json
+    ├── app.py                  Main application entry point
+    ├── google_integration.py   Google Sheets integration logic
+    ├── mysql_integration.py    MySQL database integration logic
+    ├── pipedrive_api.py        Pipedrive API wrapper
+    ├── config/                 Configuration files
+    │   ├── .env                Environment variables
+    │   └── google_creds.json   Google OAuth credentials
+    └── token.json              Cached Google OAuth token
     </pre>
+
+    
     
 4. **Set Up Configuration**
 
@@ -190,7 +196,11 @@ On first Google-auth use, a browser window may open for OAuth consent; a local `
 3. Click **Capture Deal Snapshot**.
 4. When confirmation pop-up appears, verify titles and IDs.
 5. Click **Yes** to proceed.
-6. Wait for success message in the Activity Log section.
+6. Based on the existing record status in Google Sheets, the app will do one of the following:
+    * Append a new row if the deal ID does not yet exist.
+    * Update the existing row if the deal ID exists but is not yet uploaded to MySQL.
+    * Block the action if the deal ID already exists and is marked as uploaded.
+7. Wait for success message in the Activity Log section.
 
 ### C. Sync snapshots into database
 1. Go to **Import** section.
@@ -203,6 +213,7 @@ On first Google-auth use, a browser window may open for OAuth consent; a local `
 - IDs must be numeric.
 - If a deal snapshot already exists and is already uploaded, edits are blocked.
 - If no unuploaded rows exist, import safely does nothing.
+- Row deletion is restricted to protect historical accuracy. Once a deal is merged in Pipedrive, the original state of that deal can no longer be recreated/recaptured by the tool. Removing a snapshot would permanently remove the only preserved record of that pre-merge state. Hence, if any deletion or removal of entries in the Google Sheet and MySQL table is required, please contact the tool developer for assistance.
 
 ### E. Common troubleshooting
 - **“config/.env not found”**: Place `.env` inside the `config` folder.
