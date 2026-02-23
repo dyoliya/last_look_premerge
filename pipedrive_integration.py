@@ -475,9 +475,9 @@ def get_deal(deal_id: int, api_token: str) -> Dict[str, Any]:
 
     fields_meta = get_deal_fields_meta(api_token)
 
-    unmapped_customish = [k for k in data.keys() if str(k) not in fields_meta and len(str(k)) >= 20]
-    print("[DEBUG] Unmapped keys count:", len(unmapped_customish))
-    print("[DEBUG] Sample unmapped keys:", unmapped_customish[:20])
+    # unmapped_customish = [k for k in data.keys() if str(k) not in fields_meta and len(str(k)) >= 20]
+    # print("[DEBUG] Unmapped keys count:", len(unmapped_customish))
+    # print("[DEBUG] Sample unmapped keys:", unmapped_customish[:20])
 
     stages_map = get_stages(api_token)
     pipelines_map = get_pipelines(api_token)
