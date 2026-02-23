@@ -78,7 +78,7 @@ As part of this process, once the PD team identifies which deals will be deleted
 
 ### Import flow
 1. App reads all rows from `Sheet1` where `Uploaded != YES`.
-2. App creates a temporary CSV.
+2. App creates an audit copy in `xlsx` format.
 3. App maps sheet columns to MySQL table columns.
 4. App inserts rows into the configured MySQL table.
 5. App marks those deal IDs as `Uploaded = YES` in Google Sheets.
@@ -119,6 +119,7 @@ As part of this process, once the PD team identifies which deals will be deleted
     <pre>project/
     │
     ├── app.py                  Main application entry point
+    ├── audit/                  Folder containing generated XLSX audit files
     ├── google_integration.py   Google Sheets integration logic
     ├── mysql_integration.py    MySQL database integration logic
     ├── pipedrive_api.py        Pipedrive API wrapper
