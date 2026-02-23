@@ -1,9 +1,21 @@
-# app.py
+# -------------------------ABOUT --------------------------
+
+# pyinstaller --onefile last_look_premerge.py
+# Tool: LastLook: PreMerge
+# Developer: dyoliya
+# Created: 2026-02-04
+
+# © 2026 dyoliya. All rights reserved.
+
+# ---------------------------------------------------------
+
 import os
 import sys
 import threading
-from tkinter import messagebox
 import customtkinter as ctk
+import pandas as pd
+import json
+from tkinter import messagebox
 from dotenv import load_dotenv
 from pipedrive_integration import get_deal, get_pipelines, get_stages
 from google_integration import (
@@ -15,7 +27,7 @@ from google_integration import (
     update_deal_row_in_sheet,
     is_row_uploaded
 )
-from mysql_integration import insert_csv_to_mysql
+from mysql_integration import insert_df_to_mysql
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -50,7 +62,8 @@ class LastLookApp(ctk.CTk):
         super().__init__()
         self.title("LastLook: PreMerge")
         self.geometry("400x700")
-        self.resizable(False, False)
+        self.resizable(False, True)
+        self.minsize(400, 600)
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
         self.configure(fg_color="#fff6de")
@@ -107,24 +120,28 @@ class LastLookApp(ctk.CTk):
         self.progress.pack(pady=10)
 
         # Activity Log
+        # 1) Create a container frame for the log area
+        self.log_container = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.log_container.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        # 2) Use grid INSIDE the log_container so the textbox can expand
+        self.log_container.grid_rowconfigure(1, weight=1)   # row 1 = textbox grows
+        self.log_container.grid_columnconfigure(0, weight=1)
+
         ctk.CTkLabel(
-            self.main_frame,
+            self.log_container,
             text="Activity Log",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#273946"
-        ).pack(anchor="w", padx=20, pady=(0, 4))
+        ).grid(row=0, column=0, sticky="w", padx=10, pady=(0, 4))
 
         self.log_box = ctk.CTkTextbox(
-            self.main_frame,
-            width=360,
-            height=200,
+            self.log_container,
             fg_color="#ffffff",
             text_color="#273946"
         )
-        self.log_box.pack(padx=10, pady=(0, 10))
+        self.log_box.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
         self.log_box.configure(state="disabled")
-
-        self._log("Waiting for action...")
 
     def _create_locked_tab_section(
         self,
@@ -504,13 +521,59 @@ class LastLookApp(ctk.CTk):
                 self.progress_callback(0, "Waiting for action...")
                 return
 
-            self.progress_callback(0.3, "Generating CSV and inserting into MySQL...")
-            csv_path = "temp_lastlook_import.csv"
-            import pandas as pd
-            pd.DataFrame(rows).to_csv(csv_path, index=False)
+            self.progress_callback(0.3, "Generating file for audit purposes...")
 
-            insert_csv_to_mysql(
-                csv_path,
+            # Create DataFrame from sheet rows
+            df = pd.DataFrame(rows)
+
+            df_insert = df.copy(deep=True)   # this stays EXACTLY as sheet values for DB
+            df_audit = df.copy(deep=True)    # this will be sanitized only for CSV audit file
+
+            # Create unique audit filename (so it doesn't overwrite)
+            audit_name = datetime.now(ZoneInfo("America/Chicago")).strftime(
+                "audit_lastlook_%Y%m%d_%H%M%S.xlsx"
+            )
+            # Ensure audit folder exists
+            os.makedirs("audit", exist_ok=True)
+
+            audit_name = datetime.now(ZoneInfo("America/Chicago")).strftime(
+                "audit_lastlook_%Y%m%d_%H%M%S.xlsx"
+            )
+
+            audit_path = f"audit/{audit_name}"
+
+            for col in ["Deal - Full Info", "Deal - Full Info (Raw)"]:
+                if col in df_audit.columns:
+                    def _sanitize_json_cell(x):
+                        if pd.isna(x) or x == "":
+                            return ""
+                        if isinstance(x, (dict, list)):
+                            s = json.dumps(x, ensure_ascii=False)
+                        else:
+                            s = str(x)
+
+                        # audit excel safety only (do NOT do this on df_insert)
+                        s = s.replace("\r\n", "\n").replace("\r", "\n")
+                        return s
+
+                    df_audit[col] = df_audit[col].apply(_sanitize_json_cell)
+
+            # Optional: write audit file (recommended)
+            with pd.ExcelWriter(audit_path, engine="openpyxl") as writer:
+                df_audit.to_excel(writer, index=False, sheet_name="audit")
+
+                # Optional: make columns readable
+                ws = writer.sheets["audit"]
+                ws.freeze_panes = "A2"  # freeze header row
+
+                # widen Full Info columns (so JSON is not visually cramped)
+                for col_letter, header in zip(["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"], df_audit.columns):
+                    if header in ["Deal - Full Info", "Deal - Full Info (Raw)"]:
+                        ws.column_dimensions[col_letter].width = 80
+
+            self.progress_callback(0.5, "Inserting into MySQL...")
+            insert_df_to_mysql(
+                df_insert,
                 {
                     "host": MYSQL_HOST,
                     "user": MYSQL_USER,

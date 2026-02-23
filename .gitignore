@@ -36,3 +36,5 @@ Thumbs.db
 *.csv
 old_ui.py
 *.json
+google_test_export.py
+*.mp4
