@@ -19,10 +19,10 @@ from tkinter import messagebox
 from dotenv import load_dotenv
 from pipedrive_integration import get_deal, get_pipelines, get_stages
 from google_integration import (
+    init_google_service_service_account,
     append_deal_to_sheet,
     read_unuploaded_rows,
     mark_uploaded,
-    init_google_service,
     find_deal_row_by_id,
     update_deal_row_in_sheet,
     is_row_uploaded
@@ -43,8 +43,8 @@ if not os.path.exists(ENV_FILE):
 
 load_dotenv(ENV_FILE)
 API_TOKEN = os.getenv("PIPEDRIVE_API_TOKEN")
-GOOGLE_CREDS_JSON = os.getenv("GOOGLE_CREDS_JSON")
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
 MYSQL_HOST = os.getenv("MYSQL_HOST")
 MYSQL_USER = os.getenv("MYSQL_USER")
 MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD")
@@ -54,6 +54,10 @@ MYSQL_DB_TABLE = os.getenv("MYSQL_DB_TABLE")
 
 if not API_TOKEN:
     messagebox.showerror("Invalid config", "PIPEDRIVE_API_TOKEN not found in config/.env")
+    sys.exit(1)
+
+if not SERVICE_ACCOUNT_JSON:
+    messagebox.showerror("Invalid config", "GOOGLE_SERVICE_ACCOUNT_JSON not found in config/.env")
     sys.exit(1)
 
 # ---------- UI ----------
@@ -458,7 +462,7 @@ class LastLookApp(ctk.CTk):
             deleted_deal["Snapshot Date"] = snapshot_str
 
             self.progress_callback(0.5, "Checking Google Sheet for existing snapshot...")
-            service = init_google_service(GOOGLE_CREDS_JSON)
+            service = init_google_service_service_account(SERVICE_ACCOUNT_JSON)
 
             existing_row = find_deal_row_by_id(service, GOOGLE_SHEET_ID, deleted_id)
 
@@ -508,11 +512,12 @@ class LastLookApp(ctk.CTk):
 
     def _import_worker(self):
         try:
+            service = init_google_service_service_account(SERVICE_ACCOUNT_JSON)
             self.progress_callback(0, "Reading unuploaded rows from Google Sheet...")
             rows = read_unuploaded_rows(
-                token_path="token.json",
-                sheet_id=GOOGLE_SHEET_ID,
-                worksheet_name="Sheet1"
+                service,
+                GOOGLE_SHEET_ID,
+                "Sheet1"
             )
 
 
@@ -541,6 +546,7 @@ class LastLookApp(ctk.CTk):
             )
 
             audit_path = f"audit/{audit_name}"
+            MAX_EXCEL_LEN = 32767
 
             for col in ["Deal - Full Info", "Deal - Full Info (Raw)"]:
                 if col in df_audit.columns:
@@ -554,6 +560,10 @@ class LastLookApp(ctk.CTk):
 
                         # audit excel safety only (do NOT do this on df_insert)
                         s = s.replace("\r\n", "\n").replace("\r", "\n")
+                        # ✅ prevent Excel cell length error
+                        if len(s) > MAX_EXCEL_LEN:
+                            s = s[:MAX_EXCEL_LEN]
+
                         return s
 
                     df_audit[col] = df_audit[col].apply(_sanitize_json_cell)
@@ -578,17 +588,19 @@ class LastLookApp(ctk.CTk):
                     "host": MYSQL_HOST,
                     "user": MYSQL_USER,
                     "password": MYSQL_PASSWORD,
-                    "db": MYSQL_DB,
+                    "database": MYSQL_DB,
+                    "port": 3306,
+                    "charset": "utf8mb4",
                 },
                 table_name=MYSQL_DB_TABLE
             )
 
             deal_ids = [r["Deal - ID"] for r in rows]
             mark_uploaded(
-                token_path="token.json",
-                sheet_id=GOOGLE_SHEET_ID,
-                deal_ids=deal_ids,
-                worksheet_name="Sheet1"
+                service,
+                GOOGLE_SHEET_ID,
+                deal_ids,
+                "Sheet1"
             )
 
             self.progress_callback(1.0, "Import completed successfully!")

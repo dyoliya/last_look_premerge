@@ -1,4 +1,4 @@
-import mysql.connector
+import pymysql
 import pandas as pd
 import json
 
@@ -150,23 +150,32 @@ def insert_df_to_mysql(df: pd.DataFrame, mysql_config: dict, table_name: str):
             bad = df[df[c].isna()]
             raise ValueError(f"Some rows have NULL for required column '{c}'. Example row(s):\n{bad.head(3)}")
 
-    conn = mysql.connector.connect(
-        host=mysql_config["host"],
-        user=mysql_config["user"],
-        password=mysql_config["password"],
-        database=mysql_config["db"],
-    )
-    cursor = conn.cursor()
-
     cols = list(df.columns)
     placeholders = ", ".join(["%s"] * len(cols))
     col_sql = ", ".join([f"`{c}`" for c in cols])
 
     sql = f"INSERT INTO `{table_name}` ({col_sql}) VALUES ({placeholders})"
 
-    data = [tuple(None if pd.isna(x) else x for x in row) for row in df.itertuples(index=False, name=None)]
-    cursor.executemany(sql, data)
+    data = [
+        tuple(None if pd.isna(x) else x for x in row)
+        for row in df.itertuples(index=False, name=None)
+    ]
 
-    conn.commit()
-    cursor.close()
-    conn.close()
+    conn = pymysql.connect(
+        host=mysql_config["host"],
+        user=mysql_config["user"],
+        password=mysql_config["password"],
+        database=mysql_config.get("database") or mysql_config.get("db"),
+        port=int(mysql_config.get("port", 3306)),
+        charset=mysql_config.get("charset", "utf8mb4"),
+        autocommit=False,
+    )
+
+    try:
+        with conn.cursor() as cursor:
+            # Central Time with DST support (recommended)
+            cursor.execute("SET time_zone = 'America/Chicago'")
+            cursor.executemany(sql, data)
+        conn.commit()
+    finally:
+        conn.close()

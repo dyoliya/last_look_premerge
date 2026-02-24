@@ -1,56 +1,20 @@
 # google_integration.py
 import pandas as pd
 import os
-from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
+from google.oauth2.service_account import Credentials
 
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-def init_google_service(credentials_json_path: str, token_path: str = "token.json"):
-    """
-    Returns Sheets service without re-auth every run.
-    - Uses token_path if it exists
-    - Refreshes token silently if expired
-    - Opens browser only if no token yet
-    """
-    creds = None
-
-    # Load existing token if available
-    if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-
-    # If missing/invalid, refresh or run OAuth once
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(credentials_json_path, SCOPES)
-            creds = flow.run_local_server(port=0)
-
-        # Save token so next run won't ask again
-        with open(token_path, "w", encoding="utf-8") as f:
-            f.write(creds.to_json())
-
+def init_google_service_service_account(service_account_json_path: str):
+    creds = Credentials.from_service_account_file(
+        service_account_json_path,
+        scopes=SCOPES
+    )
     return build("sheets", "v4", credentials=creds)
 
-
 # ---------- CONFIG ----------
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-
-def get_sheets_service(token_path):
-    """
-    Create a Sheets API service using user OAuth credentials
-    token_path: path to token.json (or the OAuth credentials JSON)
-    """
-    if not os.path.exists(token_path):
-        raise FileNotFoundError(f"{token_path} not found. Please authenticate first.")
-    
-    creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-    service = build('sheets', 'v4', credentials=creds)
-    return service
 
 def find_deal_row_by_id(service, sheet_id, deal_id, sheet_name="Sheet1"):
     """
@@ -205,8 +169,7 @@ def sheet_values_exist(sheet, sheet_id, worksheet_name):
     result = sheet.values().get(spreadsheetId=sheet_id, range=worksheet_name).execute()
     return bool(result.get("values"))
 
-def read_unuploaded_rows(token_path, sheet_id, worksheet_name="Sheet1"):
-    service = get_sheets_service(token_path)
+def read_unuploaded_rows(service, sheet_id, worksheet_name):
     sheet = service.spreadsheets()
 
     result = sheet.values().get(spreadsheetId=sheet_id, range=worksheet_name).execute()
@@ -231,8 +194,7 @@ def read_unuploaded_rows(token_path, sheet_id, worksheet_name="Sheet1"):
     return rows
 
 
-def mark_uploaded(token_path, sheet_id, deal_ids, worksheet_name="Sheet1"):
-    service = get_sheets_service(token_path)
+def mark_uploaded(service, sheet_id, deal_ids, worksheet_name="Sheet1"):
     sheet = service.spreadsheets()
 
     result = sheet.values().get(spreadsheetId=sheet_id, range=worksheet_name).execute()
