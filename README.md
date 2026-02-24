@@ -118,15 +118,15 @@ As part of this process, once the PD team identifies which deals will be deleted
 
     <pre>project/
     │
-    ├── app.py                  Main application entry point
-    ├── audit/                  Folder containing generated XLSX audit files
-    ├── google_integration.py   Google Sheets integration logic
-    ├── mysql_integration.py    MySQL database integration logic
-    ├── pipedrive_api.py        Pipedrive API wrapper
-    ├── config/                 Configuration files
-    │   ├── .env                Environment variables
-    │   └── google_creds.json   Google OAuth credentials
-    └── token.json              Cached Google OAuth token
+    ├── app.py                                Main application entry point
+    ├── audit/                                Folder containing generated XLSX audit files
+    ├── google_integration.py                 Google Sheets integration logic
+    ├── mysql_integration.py                  MySQL database integration logic
+    ├── pipedrive_api.py                      Pipedrive API wrapper
+    └── config/                               Configuration files
+        ├── .env                              Environment variables
+        ├── List of Deal Fields.xlsx          Reference mapping for Pipedrive Deal Fields
+        └── service_account.json              Google service account credentials 
     </pre>
 
     
