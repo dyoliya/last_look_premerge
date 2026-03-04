@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
-
+import json
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -13,6 +13,30 @@ def init_google_service_service_account(service_account_json_path: str):
         scopes=SCOPES
     )
     return build("sheets", "v4", credentials=creds)
+
+MAX_SHEETS_CELL_LEN = 50000
+TRIM_COLS = {"Deal - Full Info", "Deal - Full Info (Raw)"}
+
+def _trim_for_google_sheets(value, *, deal_id=None, col_name=None, log_fn=None, max_len: int = MAX_SHEETS_CELL_LEN) -> str:
+    """
+    Trim only if beyond max_len. If trimmed, log to Activity Log (if log_fn provided).
+    """
+    if value is None:
+        s = ""
+    elif isinstance(value, (dict, list)):
+        s = json.dumps(value, ensure_ascii=False)
+    else:
+        s = str(value)
+
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+
+    original_len = len(s)
+    if original_len > max_len:
+        if callable(log_fn):
+            log_fn(f"[WARN] Deal {deal_id} → trimmed column '{col_name}' from {original_len} to {max_len} chars (Sheets limit).")
+        s = s[:max_len]
+
+    return s
 
 # ---------- CONFIG ----------
 
@@ -87,7 +111,7 @@ def is_row_uploaded(service, sheet_id, row_number, sheet_name="Sheet1"):
     val = row[uploaded_col] if uploaded_col < len(row) else ""
     return str(val).strip().upper() == "YES"
 
-def update_deal_row_in_sheet(service, deal_dict, sheet_id, row_number, sheet_name="Sheet1"):
+def update_deal_row_in_sheet(service, deal_dict, sheet_id, row_number, sheet_name="Sheet1", log_fn=None):
     """
     Updates an existing row by aligning values to headers (row 1).
     Keeps existing values for headers not present in deal_dict.
@@ -113,10 +137,15 @@ def update_deal_row_in_sheet(service, deal_dict, sheet_id, row_number, sheet_nam
     existing_row = data_rows[idx_in_data]
     existing_map = {headers[i]: (existing_row[i] if i < len(existing_row) else "") for i in range(len(headers))}
 
+    deal_id = deal_dict.get("Deal - ID", "")
+
     updated_row = []
     for h in headers:
         if h in deal_dict:
-            updated_row.append(deal_dict.get(h, ""))
+            v = deal_dict.get(h, "")
+            if h in TRIM_COLS:
+                v = _trim_for_google_sheets(v, deal_id=deal_id, col_name=h, log_fn=log_fn)
+            updated_row.append(v)
         else:
             updated_row.append(existing_map.get(h, ""))
 
@@ -131,7 +160,7 @@ def update_deal_row_in_sheet(service, deal_dict, sheet_id, row_number, sheet_nam
     ).execute()
 
 
-def append_deal_to_sheet(service, deal_dict, sheet_id, sheet_name="Sheet1"):
+def append_deal_to_sheet(service, deal_dict, sheet_id, sheet_name="Sheet1", log_fn=None):
     sheet = service.spreadsheets()
 
     # 1) Read header row (Row 1)
@@ -145,10 +174,15 @@ def append_deal_to_sheet(service, deal_dict, sheet_id, sheet_name="Sheet1"):
     if not headers:
         raise ValueError("No headers found in row 1. Please set headers first.")
 
-    # 2) Build row aligned to headers
+    # 2) Build row aligned to headers (TRIM long fields)
+    deal_id = deal_dict.get("Deal - ID", "")
+
     row = []
     for h in headers:
-        row.append(deal_dict.get(h, ""))  # blank if field not found
+        v = deal_dict.get(h, "")
+        if h in TRIM_COLS:
+            v = _trim_for_google_sheets(v, deal_id=deal_id, col_name=h, log_fn=log_fn)
+        row.append(v)
 
     # 3) Append aligned row
     body = {"values": [row]}

@@ -64,7 +64,7 @@ if not SERVICE_ACCOUNT_JSON:
 class LastLookApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("LastLook: PreMerge")
+        self.title("LastLook: PreMerge [v1.0.1]")
         self.geometry("400x700")
         self.resizable(False, True)
         self.minsize(400, 600)
@@ -484,10 +484,10 @@ class LastLookApp(ctk.CTk):
                     return
 
                 self.progress_callback(0.7, f"Updating existing snapshot (row {existing_row})...")
-                update_deal_row_in_sheet(service, deleted_deal, GOOGLE_SHEET_ID, existing_row)
+                update_deal_row_in_sheet(service, deleted_deal, GOOGLE_SHEET_ID, existing_row, log_fn=self._log)
             else:
                 self.progress_callback(0.7, "Adding new snapshot row...")
-                append_deal_to_sheet(service, deleted_deal, GOOGLE_SHEET_ID)
+                append_deal_to_sheet(service, deleted_deal, GOOGLE_SHEET_ID, log_fn=self._log)
 
 
             self.progress_callback(1.0, f"Deal {deleted_id} added successfully!")
