@@ -231,23 +231,28 @@ def read_unuploaded_rows(service, sheet_id, worksheet_name):
 def mark_uploaded(service, sheet_id, deal_ids, worksheet_name="Sheet1"):
     sheet = service.spreadsheets()
 
-    result = sheet.values().get(spreadsheetId=sheet_id, range=worksheet_name).execute()
-    all_values = result.get("values", [])
-    if not all_values:
-        return
+    # Read headers only
+    header_result = sheet.values().get(
+        spreadsheetId=sheet_id,
+        range=f"{worksheet_name}!1:1"
+    ).execute()
 
-    headers = all_values[0]
+    headers = (header_result.get("values") or [[]])[0]
+    if not headers:
+        return
 
     if "Deal - ID" not in headers:
         raise ValueError("Column 'Deal - ID' not found in headers.")
 
-    deal_id_col = headers.index("Deal - ID")
+    deal_id_col = headers.index("Deal - ID") + 1
+    deal_id_col_letter = col_to_letter(deal_id_col)
 
     if "Uploaded" in headers:
         uploaded_idx = headers.index("Uploaded")
     else:
         uploaded_idx = len(headers)
         headers.append("Uploaded")
+
         sheet.values().update(
             spreadsheetId=sheet_id,
             range=f"{worksheet_name}!A1",
@@ -255,23 +260,34 @@ def mark_uploaded(service, sheet_id, deal_ids, worksheet_name="Sheet1"):
             body={"values": [headers]}
         ).execute()
 
-    # Normalize IDs to strings for comparison
+    uploaded_col_letter = col_to_letter(uploaded_idx + 1)
     deal_ids_set = {str(x).strip() for x in deal_ids}
 
-    updates = []
-    for row in all_values[1:]:
-        # pad the row so indexes are safe
-        if len(row) < len(headers):
-            row = row + [""] * (len(headers) - len(row))
-
-        if str(row[deal_id_col]).strip() in deal_ids_set:
-            row[uploaded_idx] = "YES"
-
-        updates.append(row)
-
-    sheet.values().update(
+    # Read only Deal - ID column, not the full sheet
+    id_result = sheet.values().get(
         spreadsheetId=sheet_id,
-        range=f"{worksheet_name}!A2",
-        valueInputOption="RAW",
-        body={"values": updates}
+        range=f"{worksheet_name}!{deal_id_col_letter}2:{deal_id_col_letter}"
+    ).execute()
+
+    id_values = id_result.get("values", [])
+
+    data = []
+    for offset, row in enumerate(id_values, start=2):
+        deal_id_value = row[0] if row else ""
+
+        if str(deal_id_value).strip() in deal_ids_set:
+            data.append({
+                "range": f"{worksheet_name}!{uploaded_col_letter}{offset}",
+                "values": [["YES"]]
+            })
+
+    if not data:
+        return
+
+    sheet.values().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={
+            "valueInputOption": "RAW",
+            "data": data
+        }
     ).execute()

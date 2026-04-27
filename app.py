@@ -64,7 +64,7 @@ if not SERVICE_ACCOUNT_JSON:
 class LastLookApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("LastLook: PreMerge [v1.0.1]")
+        self.title("LastLook: PreMerge [v1.0.2]")
         self.geometry("400x700")
         self.resizable(False, True)
         self.minsize(400, 600)
